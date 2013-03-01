@@ -84,6 +84,31 @@ class APN::Notification < APN::Base
     message
   end
 
+  # Creates the enhanced binary message needed to send to Apple in order to have the ability to
+  # retrieve error description from Apple server in case of connection was cancelled.
+  # http://developer.apple.com/library/mac/#documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingWIthAPS/CommunicatingWIthAPS.html
+  # Default expiry time is 10 days.
+  def enhanced_message_for_sending (seconds_to_expire = configatron.apn.notification_expiration_seconds)
+    json = to_apple_json
+    encoded_time = [Time.now.to_i + seconds_to_expire].pack('N')
+    message = "\1#{[self.id].pack('N')}#{encoded_time}\0 #{self.device.to_hexa}\0#{json.length.chr}#{json}"
+    raise APN::Errors::ExceededMessageSizeError.new(message) if message.size.to_i > 256
+    message
+  end
+
+  def response_from_apns(connection)
+    timeout = 5
+    if IO.select([connection], nil, nil, timeout)
+      buf = connection.read(6)
+      if buf
+        command, error_code, notification_id = buf.unpack('CCN')
+        [error_code, notification_id]
+      end
+    end
+  end
+
+
+
   class << self
 
     # Opens a connection to the Apple APN server and attempts to batch deliver
@@ -104,14 +129,34 @@ class APN::Notification < APN::Base
         APN::Connection.open_for_delivery do |conn, sock|
           notifications.each do |noty|
             # jim
-            conn.write(noty.message_for_sending)
-            noty.sent_at = Time.now
-            noty.save
-          end
-        end
+#           conn.write(noty.message_for_sending)
+#           noty.sent_at = Time.now
+#           noty.save
 
-      end
-    end
+              begin
+                conn.write(noty.enhanced_message_for_sending)
+                noty.sent_at   = Time.now
+                noty.errors_nb = 1
+                noty.badge = 2
+                noty.save
+                noty.update_attributes(:errors_nb => 1)
+              rescue Exception => e
+                if e.message == "Broken pipe"
+                  # Write failed (disconnected). Read response.
+                  error_code, notif_id = response_from_apns(conn)
+                  noty.errors_nb = 2
+                  noty.badge = 3
+                  noty.save
+                  noty.update_attributes(:errors_nb => error_code)
+
+                end      # if e.message
+              end  # begin
+          end  # do
+        end  # do
+
+      end  # unless
+    end  # def send_notifications
+
 
   end # class << self
 
