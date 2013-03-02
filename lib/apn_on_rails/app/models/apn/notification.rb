@@ -88,8 +88,9 @@ class APN::Notification < APN::Base
   # retrieve error description from Apple server in case of connection was cancelled.
   # http://developer.apple.com/library/mac/#documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingWIthAPS/CommunicatingWIthAPS.html
   # Default expiry time is 10 days.
-  def enhanced_message_for_sending (seconds_to_expire = configatron.apn.notification_expiration_seconds)
-    json = to_apple_json
+# def enhanced_message_for_sending (seconds_to_expire = configatron.apn.notification_expiration_seconds)
+  def enhanced_message_for_sending (seconds_to_expire = 86400*30)
+    json = self.to_apple_json
     encoded_time = [Time.now.to_i + seconds_to_expire].pack('N')
     message = "\1#{[self.id].pack('N')}#{encoded_time}\0 #{self.device.to_hexa}\0#{json.length.chr}#{json}"
     raise APN::Errors::ExceededMessageSizeError.new(message) if message.size.to_i > 256
@@ -136,15 +137,13 @@ class APN::Notification < APN::Base
               begin
                 conn.write(noty.enhanced_message_for_sending)
                 noty.sent_at   = Time.now
-                noty.errors_nb = 1
                 noty.badge = 2
                 noty.save
-                noty.update_attributes(:errors_nb => 1)
+                noty.update_attributes(:errors_nb => 0)
               rescue Exception => e
                 if e.message == "Broken pipe"
                   # Write failed (disconnected). Read response.
                   error_code, notif_id = response_from_apns(conn)
-                  noty.errors_nb = 2
                   noty.badge = 3
                   noty.save
                   noty.update_attributes(:errors_nb => error_code)
