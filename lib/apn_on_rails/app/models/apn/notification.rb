@@ -89,7 +89,7 @@ class APN::Notification < APN::Base
   # http://developer.apple.com/library/mac/#documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingWIthAPS/CommunicatingWIthAPS.html
   # Default expiry time is 10 days.
 # def enhanced_message_for_sending (seconds_to_expire = configatron.apn.notification_expiration_seconds)
-  def enhanced_message_for_sending (seconds_to_expire = 86400*30)
+  def enhanced_message_for_sending (seconds_to_expire = 86400*30)  
     json = self.to_apple_json
     encoded_time = [Time.now.to_i + seconds_to_expire].pack('N')
     message = "\1#{[self.id].pack('N')}#{encoded_time}\0 #{self.device.to_hexa}\0#{json.length.chr}#{json}"
